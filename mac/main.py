@@ -1,8 +1,79 @@
 import cv2  
 import mediapipe as mp  
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 import time
-import subprocess
+import threading
+import urllib.request
+import os
 from pathlib import Path
+import subprocess
+
+
+class VideoPlayer:
+    """Cross-platform video player using OpenCV."""
+    
+    def __init__(self, video_path: Path):
+        self.video_path = video_path
+        self.playing = False
+        self.thread = None
+        self.cap = None
+        self.window_name = "Skyrim Alert"
+    
+    def _play_loop(self):
+        """Internal loop that plays the video in a separate thread."""
+        self.cap = cv2.VideoCapture(str(self.video_path))
+        if not self.cap.isOpened():
+            print(f"Could not open video: {self.video_path}")
+            return
+        
+        fps = self.cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0:
+            fps = 30
+        delay = int(1000 / fps)
+        
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(self.window_name, 390, 780)
+        
+        while self.playing:
+            ret, frame = self.cap.read()
+            if not ret:
+                # Loop the video
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                continue
+            
+            try:
+                cv2.imshow(self.window_name, frame)
+                key = cv2.waitKey(delay) & 0xFF
+                if key == 27 or key == ord('q'):  # ESC or Q to close
+                    break
+            except:
+                break
+            # comment
+        
+        self.cap.release()
+        try:
+            cv2.destroyWindow(self.window_name)
+        except:
+            pass
+    
+    def play(self):
+        """Start playing the video in a separate window."""
+        if not self.playing:
+            self.playing = True
+            self.thread = threading.Thread(target=self._play_loop, daemon=True)
+            self.thread.start()
+    
+    def stop(self):
+        """Stop playing the video."""
+        self.playing = False
+        if self.thread:
+            self.thread.join(timeout=1.0)
+            self.thread = None
+
+
+# Global video player instance
+video_player = None
 
 
 def osascript(script: str) -> None:
@@ -48,6 +119,18 @@ def close_video(video_path: Path) -> None:
     end tell
     '''
     osascript(script)
+    """Play video in a separate window (cross-platform)."""
+    global video_player
+    if video_player is None:
+        video_player = VideoPlayer(video_path)
+    video_player.play()
+
+
+def close_video(video_path: Path) -> None:
+    """Stop the video playback."""
+    global video_player
+    if video_player is not None:
+        video_player.stop()
 
 def draw_warning(frame, text="lock in twin"):
     h, w = frame.shape[:2]
@@ -86,7 +169,23 @@ def main():
         print("Could not open skyrim-skeleton.mp4")
         return
     
-    face_mesh_landmarks = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
+    # Download the face landmarker model if it doesn't exist
+    model_path = Path("./assets/face_landmarker.task").resolve()
+    if not model_path.exists():
+        print("Downloading face landmarker model...")
+        url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+        urllib.request.urlretrieve(url, str(model_path))
+        print("Model downloaded successfully!")
+    
+    # Create face landmarker using the new API
+    base_options = python.BaseOptions(model_asset_path=str(model_path))
+    options = vision.FaceLandmarkerOptions(
+        base_options=base_options,
+        output_face_blendshapes=False,
+        output_facial_transformation_matrixes=False,
+        num_faces=1
+    )
+    face_landmarker = vision.FaceLandmarker.create_from_options(options)
 
     cam = cv2.VideoCapture(0)
     if not cam.isOpened():
@@ -102,15 +201,20 @@ def main():
             continue
         
         frame = cv2.flip(frame, 1)
-        height, width, depth = frame.shape
+        height, width, _ = frame.shape
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        processed_image = face_mesh_landmarks.process(rgb_frame)
-        face_landmark_points = processed_image.multi_face_landmarks
+        
+        # Convert to mediapipe image format
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        
+        # Detect face landmarks
+        detection_result = face_landmarker.detect(mp_image)
+        face_landmark_points = detection_result.face_landmarks
 
         current = time.time()
 
-        if face_landmark_points:
-            one_face_landmark_points = face_landmark_points[0].landmark
+        if face_landmark_points and len(face_landmark_points) > 0:
+            one_face_landmark_points = face_landmark_points[0]
             
             left = [one_face_landmark_points[145], one_face_landmark_points[159]]
             for landmark_point in left:
@@ -173,9 +277,9 @@ def main():
             draw_warning(frame, "doomscrolling alarm")
 
         cv2.imshow('lock in', frame)
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(1) & 0xFF
 
-        if key == 27:
+        if key == 27 or key == ord('q'):
             break
 
     if video_playing:
