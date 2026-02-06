@@ -20,13 +20,21 @@ class VideoPlayer:
         self.cap = None
         self.window_name = "Skyrim Alert"
         self.audio_initialized = False
+        # Initialize pygame mixer once
+        try:
+            pygame.mixer.init()
+        except:
+            pass
     
     def _initialize_audio(self):
         """Initialize pygame mixer for audio playback."""
         if not self.audio_initialized:
-            pygame.mixer.init()
-            pygame.mixer.music.load(str(self.video_path))
-            self.audio_initialized = True
+            try:
+                pygame.mixer.music.load(str(self.video_path))
+                self.audio_initialized = True
+            except Exception as e:
+                print(f"Could not load audio: {e}")
+                self.audio_initialized = False
     
     def _play_loop(self):
         """Internal loop that plays the video in a separate thread."""
@@ -36,7 +44,11 @@ class VideoPlayer:
             return
         
         self._initialize_audio()
-        pygame.mixer.music.play()
+        if self.audio_initialized:
+            try:
+                pygame.mixer.music.play()
+            except Exception as e:
+                print(f"Could not play audio: {e}")
 
         fps = self.cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0:
@@ -51,7 +63,11 @@ class VideoPlayer:
             if not ret:
                 # Loop the video
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                pygame.mixer.music.play()
+                if self.audio_initialized:
+                    try:
+                        pygame.mixer.music.play()
+                    except:
+                        pass
                 continue
             
             try:
@@ -64,7 +80,10 @@ class VideoPlayer:
             # comment
         
         self.cap.release()
-        pygame.mixer.music.stop()
+        try:
+            pygame.mixer.music.stop()
+        except:
+            pass
         try:
             cv2.destroyWindow(self.window_name)
         except:
@@ -83,7 +102,10 @@ class VideoPlayer:
         if self.thread:
             self.thread.join(timeout=1.0)
             self.thread = None
-        pygame.mixer.music.stop()
+        try:
+            pygame.mixer.music.stop()
+        except:
+            pass
 
 
 # Global video player instance
