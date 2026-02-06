@@ -43,7 +43,8 @@ class VideoPlayer:
             
             try:
                 cv2.imshow(self.window_name, frame)
-                if cv2.waitKey(delay) & 0xFF == 27:  # ESC to close
+                key = cv2.waitKey(delay) & 0xFF
+                if key == 27 or key == ord('q'):  # ESC or Q to close
                     break
             except:
                 break
@@ -232,9 +233,9 @@ def main():
             draw_warning(frame, "doomscrolling alarm")
 
         cv2.imshow('lock in', frame)
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(1) & 0xFF
 
-        if key == 27:
+        if key == 27 or key == ord('q'):
             break
 
     if video_playing:
