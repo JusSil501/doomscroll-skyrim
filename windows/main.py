@@ -7,10 +7,11 @@ import threading
 import urllib.request
 import os
 from pathlib import Path
+import pygame
 
 
 class VideoPlayer:
-    """Cross-platform video player using OpenCV."""
+    """Cross-platform video player using OpenCV and pygame for audio."""
     
     def __init__(self, video_path: Path):
         self.video_path = video_path
@@ -18,6 +19,14 @@ class VideoPlayer:
         self.thread = None
         self.cap = None
         self.window_name = "Skyrim Alert"
+        self.audio_initialized = False
+    
+    def _initialize_audio(self):
+        """Initialize pygame mixer for audio playback."""
+        if not self.audio_initialized:
+            pygame.mixer.init()
+            pygame.mixer.music.load(str(self.video_path))
+            self.audio_initialized = True
     
     def _play_loop(self):
         """Internal loop that plays the video in a separate thread."""
@@ -26,6 +35,9 @@ class VideoPlayer:
             print(f"Could not open video: {self.video_path}")
             return
         
+        self._initialize_audio()
+        pygame.mixer.music.play()
+
         fps = self.cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0:
             fps = 30
@@ -39,6 +51,7 @@ class VideoPlayer:
             if not ret:
                 # Loop the video
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                pygame.mixer.music.play()
                 continue
             
             try:
@@ -51,6 +64,7 @@ class VideoPlayer:
             # comment
         
         self.cap.release()
+        pygame.mixer.music.stop()
         try:
             cv2.destroyWindow(self.window_name)
         except:
@@ -69,6 +83,7 @@ class VideoPlayer:
         if self.thread:
             self.thread.join(timeout=1.0)
             self.thread = None
+        pygame.mixer.music.stop()
 
 
 # Global video player instance
